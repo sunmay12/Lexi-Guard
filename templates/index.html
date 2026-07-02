@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lexi-Guard</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+  <header>
+    <div class="topbar">
+      <div class="brand">
+        <div class="mark">L</div>
+        <div>
+          <h1>Lexi-Guard</h1>
+          <div class="subtitle">원문 법령과 후보 조문의 충실성 판별</div>
+        </div>
+      </div>
+      <div class="status" id="status">모델 대기 중</div>
+    </div>
+  </header>
+
+  <main>
+    <div class="workspace">
+      <section class="editor">
+        <div class="editor-head">
+          <h2>조문 비교</h2>
+          <div class="actions">
+            <button type="button" id="sampleFaithful">원문 예시</button>
+            <button type="button" id="sampleHallucinated">환각 예시</button>
+            <button type="button" id="clear">지우기</button>
+            <button type="button" class="primary" id="predict">판별</button>
+          </div>
+        </div>
+        <div class="inputs">
+          <div class="field">
+            <label for="context">
+              원문 법령
+              <span class="counter" id="contextCount">0자</span>
+            </label>
+            <textarea id="context" spellcheck="false"></textarea>
+          </div>
+          <div class="field">
+            <label for="answer">
+              후보 조문 또는 답변
+              <span class="counter" id="answerCount">0자</span>
+            </label>
+            <textarea id="answer" spellcheck="false"></textarea>
+          </div>
+        </div>
+      </section>
+
+      <aside class="result">
+        <div class="result-head">
+          <h2>예측 결과</h2>
+        </div>
+        <div class="result-body">
+          <div class="badge neutral" id="labelBadge">대기</div>
+
+          <div class="metric">
+            <span>Faithful</span>
+            <strong id="faithfulText">-</strong>
+          </div>
+          <div class="bar"><div class="fill good" id="faithfulBar"></div></div>
+
+          <div class="metric">
+            <span>Not_Faithful</span>
+            <strong id="notFaithfulText">-</strong>
+          </div>
+          <div class="bar"><div class="fill bad" id="notFaithfulBar"></div></div>
+
+          <div class="note" id="note">
+            모델은 원문 법령과 후보 텍스트의 pair를 비교합니다. 긴 조문은 512 토큰 기준으로 잘릴 수 있습니다.
+          </div>
+          <div class="explanation" id="explanation" style="display:none;">
+            <h3>표면 차이 분석</h3>
+            <p class="explain-summary" id="explainSummary"></p>
+            <ul class="explain-list" id="diffList"></ul>
+            <ul class="hint-list" id="hintList"></ul>
+            <div class="note" id="explainDisclaimer"></div>
+          </div>
+          <div class="error" id="error"></div>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <script>
+    const contextEl = document.getElementById("context");
+    const answerEl = document.getElementById("answer");
+    const statusEl = document.getElementById("status");
+    const errorEl = document.getElementById("error");
+    const badgeEl = document.getElementById("labelBadge");
+    const faithfulText = document.getElementById("faithfulText");
+    const notFaithfulText = document.getElementById("notFaithfulText");
+    const faithfulBar = document.getElementById("faithfulBar");
+    const notFaithfulBar = document.getElementById("notFaithfulBar");
+    const contextCount = document.getElementById("contextCount");
+    const answerCount = document.getElementById("answerCount");
+    const explanationEl = document.getElementById("explanation");
+    const explainSummary = document.getElementById("explainSummary");
+    const diffList = document.getElementById("diffList");
+    const hintList = document.getElementById("hintList");
+    const explainDisclaimer = document.getElementById("explainDisclaimer");
+
+    const faithfulSample = {
+      context: "제91조(청구의 방식) 심사의 청구는 대통령령으로 정하는 바에 따라 문서로 하여야 한다.",
+      answer: "제91조(청구의 방식) 심사의 청구는 대통령령으로 정하는 바에 따라 문서로 하여야 한다."
+    };
+
+    const hallucinatedSample = {
+      context: "제91조(청구의 방식) 심사의 청구는 대통령령으로 정하는 바에 따라 문서로 하여야 한다.",
+      answer: "제91조(청구의 방식) 심사의 청구는 대통령령으로 정하는 바에 따라 문서로 하여야 한다. 다만, 상시근로자 50인 이상 사업장에 한한다."
+    };
+
+    function setSample(sample) {
+      contextEl.value = sample.context;
+      answerEl.value = sample.answer;
+      updateCounts();
+      resetError();
+    }
+
+    function updateCounts() {
+      contextCount.textContent = `${contextEl.value.length}자`;
+      answerCount.textContent = `${answerEl.value.length}자`;
+    }
+
+    function resetError() {
+      errorEl.style.display = "none";
+      errorEl.textContent = "";
+    }
+
+    function showError(message) {
+      errorEl.textContent = message;
+      errorEl.style.display = "block";
+    }
+
+    function setLoading(isLoading) {
+      document.getElementById("predict").disabled = isLoading;
+      statusEl.textContent = isLoading ? "예측 중" : "준비됨";
+    }
+
+    function percent(value) {
+      return `${(value * 100).toFixed(2)}%`;
+    }
+
+    function renderResult(result) {
+      const faithful = result.probabilities.Faithful;
+      const notFaithful = result.probabilities.Not_Faithful;
+      faithfulText.textContent = percent(faithful);
+      notFaithfulText.textContent = percent(notFaithful);
+      faithfulBar.style.width = percent(faithful);
+      notFaithfulBar.style.width = percent(notFaithful);
+
+      badgeEl.textContent = result.label;
+      badgeEl.className = "badge " + (result.label === "Faithful" ? "good" : "bad");
+      statusEl.textContent = `confidence ${percent(result.confidence)}`;
+      renderExplanation(result.explanation);
+    }
+
+    function appendDiff(label, value) {
+      const item = document.createElement("li");
+      item.className = "explain-item";
+      const title = document.createElement("strong");
+      title.textContent = label;
+      const body = document.createElement("span");
+      body.textContent = value;
+      item.appendChild(title);
+      item.appendChild(body);
+      diffList.appendChild(item);
+    }
+
+    function renderExplanation(explanation) {
+      if (!explanation) {
+        explanationEl.style.display = "none";
+        return;
+      }
+      explanationEl.style.display = "block";
+      explainSummary.textContent = explanation.summary;
+      diffList.innerHTML = "";
+      hintList.innerHTML = "";
+
+      (explanation.added || []).forEach((text) => appendDiff("추가된 후보 문구", text));
+      (explanation.removed || []).forEach((text) => appendDiff("누락된 원문 문구", text));
+      if (!diffList.children.length) {
+        appendDiff("차이", "큰 표면 차이가 감지되지 않았습니다.");
+      }
+
+      (explanation.hints || []).forEach((text) => {
+        const item = document.createElement("li");
+        item.textContent = text;
+        hintList.appendChild(item);
+      });
+      explainDisclaimer.textContent = explanation.disclaimer || "";
+    }
+
+    async function predict() {
+      resetError();
+      if (!contextEl.value.trim() || !answerEl.value.trim()) {
+        showError("원문 법령과 후보 조문을 모두 입력하세요.");
+        return;
+      }
+
+      setLoading(true);
+      try {
+        const response = await fetch("/predict", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            context: contextEl.value,
+            answer: answerEl.value
+          })
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.error || "예측 요청이 실패했습니다.");
+        }
+        renderResult(payload);
+      } catch (error) {
+        statusEl.textContent = "오류";
+        showError(error.message);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    document.getElementById("sampleFaithful").addEventListener("click", () => setSample(faithfulSample));
+    document.getElementById("sampleHallucinated").addEventListener("click", () => setSample(hallucinatedSample));
+    document.getElementById("clear").addEventListener("click", () => {
+      contextEl.value = "";
+      answerEl.value = "";
+      updateCounts();
+      resetError();
+    });
+    document.getElementById("predict").addEventListener("click", predict);
+    contextEl.addEventListener("input", updateCounts);
+    answerEl.addEventListener("input", updateCounts);
+
+    setSample(hallucinatedSample);
+  </script>
+</body>
+</html>

@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# virtual env
+venv/
+.venv/
+env/
+
+# logs
+*.log
+logs/
+
+# cache / temp
+.cache/
+tmp/
+temp/
+*.tmp
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Flask / backend runtime
+instance/
+*.sqlite3
+*.db
+
+# LLM / pipeline outputs
+data/raw/
+data/processed/
+data/logs/
+outputs/
+cache/
+lexi-guard-roberta/
+
+# logs / experiment runs
+runs/
+wandb/
+mlruns/
