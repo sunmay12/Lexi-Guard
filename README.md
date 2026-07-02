@@ -305,35 +305,29 @@ python src/evaluate.py \
 
 ### Lexi-Guard Test Set
 
-```text
-              precision    recall  f1-score   support
+Test Set Performance
 
-    Faithful       0.90      1.00      0.95        28
-Not_Faithful       1.00      0.98      0.99       142
+| Class         | Precision |   Recall | F1-score | Support |
+| ------------- | --------: | -------: | -------: | ------: |
+| Faithful      |      0.90 | **1.00** |     0.95 |      28 |
+| Not_Faithful  |  **1.00** |     0.98 |     0.99 |     142 |
+| **Accuracy**  |         - |        - | **0.98** |     170 |
+| **Macro Avg** |      0.95 |     0.99 | **0.97** |     170 |
 
-    accuracy                           0.98       170
-   macro avg       0.95      0.99      0.97       170
-```
+Confusion Matrix
 
-Confusion matrix:
+| Gold \ Pred      | Faithful | Not_Faithful |
+| ---------------- | -------: | -----------: |
+| **Faithful**     |   **28** |            0 |
+| **Not_Faithful** |        3 |      **139** |
 
-```text
-rows = gold, columns = prediction
 
-                 Pred Faithful   Pred Not_Faithful
-Gold Faithful          28                0
-Gold Not_Faithful       3              139
-```
+Balanced Test Set
 
-Balanced subset:
-
-```text
-n = 56
-Macro F1 = 0.982
-
-[[28  0]
- [ 1 27]]
-```
+| Metric   |     Value |
+| -------- | --------: |
+| Samples  |        56 |
+| Macro F1 | **0.982** |
 
 ### Results
 
