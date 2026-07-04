@@ -80,8 +80,10 @@ http://127.0.0.1:8501
 웹 데모에서는 원문 법령과 후보 조문을 입력하고 `Faithful` / `Not_Faithful` 확률, confidence, 표면 차이 분석을 확인할 수 있습니다.
 
 **웹 데모 화면**
-이미지1
-이미지2
+
+
+<img width="450" height="290" alt="스크린샷 2026-07-02 오후 9 57 03" src="https://github.com/user-attachments/assets/899c09ee-dd8e-4c9c-88af-c151cfecabf5" /> <img width="450" height="290" alt="스크린샷 2026-07-02 오후 9 57 18" src="https://github.com/user-attachments/assets/07196546-ff58-4f7e-9c19-9bb4c559c424" />
+
 
 ### 3. 단일 예시 추론
 
@@ -259,7 +261,7 @@ Input:
 Output:
 Faithful / Not_Faithful
 ```
-본 프로젝트는 생성된 검증 데이터셋을 이용하여 KLUE-RoBERTa를 sequence-pair classification 형태로 파인튜닝하였다. 학습된 Lexi-Guard 모델은 원문 법령(context)과 후보 텍스트(answer)를 입력받아 두 문장 간의 충실성을 판단하고, Faithful 또는 Not_Faithful을 출력한다.
+본 프로젝트는 생성된 검증 데이터셋을 이용하여 KLUE-RoBERTa를 sequence-pair classification 형태로 파인튜닝하였습니다. 학습된 Lexi-Guard 모델은 원문 법령(context)과 후보 텍스트(answer)를 입력받아 두 문장 간의 충실성을 판단하고, Faithful 또는 Not_Faithful을 출력합니다.
 
 ## 모델
 
