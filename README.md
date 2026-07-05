@@ -82,7 +82,7 @@ http://127.0.0.1:8501
 **웹 데모 화면**
 
 
-<img width="450" height="290" alt="스크린샷 2026-07-02 오후 9 57 03" src="https://github.com/user-attachments/assets/899c09ee-dd8e-4c9c-88af-c151cfecabf5" /> <img width="450" height="290" alt="스크린샷 2026-07-02 오후 9 57 18" src="https://github.com/user-attachments/assets/07196546-ff58-4f7e-9c19-9bb4c559c424" />
+<img width="550" height="390" alt="스크린샷 2026-07-02 오후 9 57 03" src="https://github.com/user-attachments/assets/899c09ee-dd8e-4c9c-88af-c151cfecabf5" /> <img width="550" height="390" alt="스크린샷 2026-07-02 오후 9 57 18" src="https://github.com/user-attachments/assets/07196546-ff58-4f7e-9c19-9bb4c559c424" />
 
 
 ### 3. 단일 예시 추론
@@ -336,8 +336,8 @@ Balanced Test Set
 | Model                         |  Accuracy |  Macro F1 | Faithful F1 | Not_Faithful F1 |
 | ----------------------------- | --------: | --------: | ----------: | --------------: |
 | TF-IDF + Logistic Regression  |     0.700 |     0.580 |       0.350 |           0.800 |
-| Zero-shot DeBERTa NLI         |     0.729 |     0.678 |       0.549 |           0.807 |
-| **Lexi-Guard (KLUE-RoBERTa)** | **0.982** | **0.972** |   **0.950** |       **0.990** |
+| Zero-shot KLUE-RoBERTa NLI    |     0.594 |     0.557 |       0.430 |           0.685 |
+| **Lexi-Guard (KLUE-RoBERTa)** | **0.982** | **0.970** |   **0.950** |       **0.990** |
 
 
 ### 유형별 Detection Recall
@@ -355,23 +355,41 @@ Balanced Test Set
 
 주요 실패 사례는 **긴 조문 안에 아주 짧은 조건이 추가**되는 경우와, 개정일자 수준의 **미세한 숫자 변경**이었습니다.
 
-### Zero-Shot NLI Baseline 비교
+### Baseline 비교
 
-Baseline: `MoritzLaurer/DeBERTa-v3-large-mnli-fever-anli-ling-wanli`
+법률 도메인 특화 학습의 효과를 확인하기 위해 어휘 기반 baseline과 한국어 NLI baseline을 함께 비교했습니다.
 
-```text
-Accuracy:        0.729
-Macro F1:        0.678
-Faithful F1:     0.549
-Not_Faithful F1: 0.807
-```
+Baseline:
+
+- `TF-IDF + Logistic Regression`
+- `Huffon/klue-roberta-base-nli` zero-shot NLI
 
 | Model | Accuracy | Macro F1 | Faithful F1 | Not_Faithful F1 |
 |---|---:|---:|---:|---:|
-| Zero-shot DeBERTa NLI | 0.729 | 0.678 | 0.549 | 0.807 |
+| TF-IDF + Logistic Regression | 0.700 | 0.580 | 0.350 | 0.800 |
+| Zero-shot KLUE-RoBERTa NLI | 0.594 | 0.557 | 0.430 | 0.685 |
 | Lexi-Guard KLUE-RoBERTa | 0.982 | 0.970 | 0.950 | 0.990 |
 
-NLI baseline은 `Legal_Effect_Reversal`, `Number_Manipulation`처럼 표면적 모순이 강한 유형은 비교적 잘 잡았지만, `Condition_Deletion`, `Information_Omission`처럼 법률적으로 중요한 누락/삭제형 환각에 취약했습니다.
+Lexi-Guard는 TF-IDF baseline 대비 Macro F1을 0.580에서 0.970으로, zero-shot NLI baseline 대비 0.557에서 0.970으로 향상했습니다. TF-IDF는 조건 추가/삭제처럼 명시적 토큰 변화가 큰 유형에는 강했지만, 의미 보존 여부나 정보 누락, 개체 치환에는 한계를 보였습니다. Zero-shot NLI는 법적 효과 반전과 숫자 조작처럼 표면적 모순이 분명한 유형에는 비교적 강했지만, 조건 추가, 정보 누락, 개체 치환처럼 법률 문맥의 세부 의미 구조를 이해해야 하는 유형에서 성능이 낮았습니다.
+
+### 입력 길이 및 Truncation 분석
+
+법률 조문은 조건과 예외가 길게 이어지는 경우가 많아 입력 길이가 모델 성능에 영향을 줄 수 있습니다. Tokenizer 출력 길이 기준 통계는 다음과 같습니다.
+
+| 입력 | 평균 | 최대 | 95th Percentile |
+|---|---:|---:|---:|
+| Context | 203 | 824 | 592 |
+| Answer | 156 | 824 | 546 |
+| Context + Answer | 359 | 1,647 | 1,091 |
+
+SHORT/LONG 구분은 special token을 포함한 tokenizer 출력 길이(`input_ids`)를 기준으로 수행했습니다. 이는 실제 추론 시 적용한 truncation 기준(`max_length=510`)과 동일한 기준이며, SHORT(<=510)는 truncation 없이 입력된 샘플, LONG(>510)은 추론 과정에서 일부 토큰이 잘린 샘플을 의미합니다.
+
+| 입력 길이 | Zero-shot NLI Macro F1 | Lexi-Guard Macro F1 |
+|---|---:|---:|
+| SHORT (<=510) | 0.614 | 0.987 |
+| LONG (>510) | 0.361 | 0.912 |
+
+Zero-shot NLI baseline은 LONG 그룹에서 성능이 크게 하락했지만, Lexi-Guard는 LONG 그룹에서도 상대적으로 높은 Macro F1을 유지했습니다. 이는 법률 환각 유형을 직접 학습한 모델이 긴 법률 문맥에서도 더 안정적으로 동작함을 보여줍니다.
 
 ## 예시
 
@@ -419,7 +437,7 @@ Not_Faithful
 
 - 현재 데이터셋은 synthetic hallucination 기반이므로 실제 RAG 답변 전체에 대한 일반화 성능을 직접 보장하지 않습니다.
 - 입력은 `context + answer` pair이며, 질문까지 포함한 end-to-end QA 평가기는 아닙니다.
-- 긴 조문은 512 token 기준으로 truncation될 수 있습니다.
+- 모델 입력 길이가 제한되어 있어 긴 조문이나 복수 문서 기반 답변에서는 정보 일부가 잘릴 수 있습니다.
 - Faithful 샘플 수가 Not_Faithful보다 적어, 더 균형 잡힌 데이터 확장이 필요합니다.
 - 모델의 예측은 법률 자문이 아니라 자동 검증 보조 신호로 사용해야 합니다.
 
@@ -429,5 +447,5 @@ Not_Faithful
 - 긴 조문 대응을 위한 sliding window 또는 changed-span 중심 입력 실험
 - 숫자 조작 유형을 본문 수량 변경과 메타데이터/개정일자 변경으로 세분화
 - faithful paraphrase 샘플 확장
-- TF-IDF, logistic regression, Korean NLI 등 추가 baseline 정리
+- 실제 법률 상담 답변에서 발생하는 환각 유형 추가 분석
 - RAG pipeline의 post-generation verifier로 통합
