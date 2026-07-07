@@ -43,7 +43,7 @@ baseline_f1  = f1_score(baseline_labels, baseline_preds, average="macro")
 baseline_acc = accuracy_score(baseline_labels, baseline_preds)
 print(f"Accuracy: {baseline_acc:.4f} / Macro F1: {baseline_f1:.4f}")
 
-# 파인튜닝 결과 — 셀 8 평가 후 여기에 직접 기입
+# 파인튜닝 결과
 ours_results = {
     "accuracy": 0.9824,
     "macro_f1": 0.9721,

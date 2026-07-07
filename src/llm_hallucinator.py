@@ -48,10 +48,9 @@ class _Tee:
   2. validate_hallucination()  — Rule-based 검증
   3. judge_hallucination()     — Judge LLM 평가
   4. save_checkpoint()         — 중간 저장
-주요 변경사항:
   실패 원인 4분류: null_response / api_error / parse_error / no_change
   Condition_Addition 유형 강제 샘플링 (_pick_condition_type)
-  fail_reason_count Counter 추가 → 유형별 실패 원인 통계 출력
+  fail_reason_count Counter → 유형별 실패 원인 통계 출력
 """
 
 HALLUCINATION_TYPES = HallucinationType.generation_values()

@@ -1,21 +1,5 @@
 """
 rule_validator.py — Rule-based 환각 검증
-
-각 환각 유형별로 최소한의 구조적 조건을 검사.
-LLM Judge 호출 전 빠른 필터링이 목적이므로,
-False Negative(통과시켜야 할 걸 막음)보다
-False Positive(잘못된 걸 통과시킴)를 줄이는 방향으로 설계.
-
-반환값: (is_valid: bool, reason: str)
-
-변경사항:
-  - _validate_condition_deletion: 마커 확장 (프롬프트와 동기화)
-  - _validate_condition_addition: 약한 단일 명사 마커 제거, 강한 구문 패턴만 인정
-  - _validate_information_omission: after 비어있지 않으면 차단 (재작성 방지)
-                                     누락 길이 판정을 before 텍스트 기준으로 변경
-  - _validate_legal_effect_reversal: "하여서는 아니 된다" 계열 pair 추가
-  - _validate_scope_manipulation: after 자체에도 scope 키워드 존재 확인
-  - _validate_entity_substitution: 주체 순서 치환 차단 추가
 """
 
 import re
@@ -30,7 +14,7 @@ def _has_content(text: str) -> bool:
 
 
 def _texts_differ(a: str, b: str) -> bool:
-    """공백·따옴표를 정규화한 뒤 실제로 달라졌는지 확인."""
+    """공백/따옴표를 정규화한 뒤 실제로 달라졌는지 확인"""
     normalize = lambda s: re.sub(r"\s+", " ", s).strip().strip("'\"")
     return normalize(a) != normalize(b)
 
@@ -64,11 +48,8 @@ def _validate_condition_deletion(
     original: str, hallucinated: str, changed_span: dict
 ) -> tuple[bool, str]:
     """
-    이전 버전 문제:
-        원문에 마커가 있고 환각문이 짧으면 통과 → 문장 뒷부분 잘라내도 통과.
-    수정:
-        원문에 있던 조건 마커가 환각문에서 실제로 사라졌는지 확인.
-        단순 truncation과 구분하기 위해 환각문이 문장 부호로 자연스럽게 끝나야 함.
+    원문에 있던 조건 마커가 환각문에서 실제로 사라졌는지 확인
+    단순 truncation과 구분하기 위해 환각문이 문장 부호로 자연스럽게 끝나야
     """
     present_markers = [m for m in CONDITION_DELETION_MARKERS if m in original]
     if not present_markers:
@@ -80,9 +61,9 @@ def _validate_condition_deletion(
     if not _texts_differ(original, hallucinated):
         return False, "원본과 환각문이 동일"
 
-    # 마커가 한 조문에 여러 번 등장할 수 있으므로(예: "경우에는"),
-    # 단순 존재 여부가 아니라 등장 횟수가 줄었는지로 판단.
-    # changed_span.before가 있으면 그게 정확히 사라졌는지 우선 확인.
+    # 마커가 한 조문에 여러 번 등장할 수 있듬(예: "경우에는")
+    # 단순 존재 여부가 아니라 등장 횟수가 줄었는지로 판단
+    # changed_span.before가 있으면 그게 정확히 사라졌는지 우선 확인
     before = changed_span.get("before", "")
     if before.strip():
         if before in hallucinated:
@@ -111,11 +92,8 @@ def _validate_condition_addition(
     original: str, hallucinated: str, changed_span: dict
 ) -> tuple[bool, str]:
     """
-    이전 버전 문제:
-        `len(hallucinated) > len(original)`만 확인 → 문장 끝에 아무 텍스트나 붙여도 통과.
-    수정:
-        환각문에 조건 마커가 실제로 추가됐는지 확인.
-        원문에는 없던 마커가 환각문에 생겼어야 함.
+    환각문에 조건 마커가 실제로 추가됐는지 확인
+    원문에는 없던 마커가 환각문에 생겼어야 함
     """
     if len(hallucinated) <= len(original):
         return False, "환각문이 원본보다 길어지지 않음 (조건 미추가 의심)"
@@ -123,8 +101,8 @@ def _validate_condition_addition(
         return False, "원본과 환각문이 동일"
 
     # 강한 패턴만 마커로 사용. "승인", "신청", "서면" 같은 단일 명사는
-    # 원문에 우연히 존재할 수 있는 일반 단어라 신호로 부적합.
-    # "~에 한하여", "~에 한한다" 처럼 조건절을 구성하는 구문 패턴만 인정.
+    # 원문에 우연히 존재할 수 있는 일반 단어라 신호로 부적합
+    # "~에 한하여", "~에 한한다" 처럼 조건절을 구성하는 구문 패턴만 인정
     condition_markers = [
         "다만", "단,", "단 ",
         "경우에 한하여", "경우에만", "경우를 제외", "경우에는",
@@ -158,12 +136,11 @@ def _validate_information_omission(
     original: str, hallucinated: str, changed_span: dict
 ) -> tuple[bool, str]:
     """
-    변경:
-        changed_span.after가 비어있지 않으면 차단.
-        Information_Omission은 "순수 삭제"만 허용되며,
-        after에 텍스트가 있다는 건 재작성(다른 표현으로 대체)이 일어났다는 신호.
-        재작성은 Legal_Effect_Reversal / Entity_Substitution 영역과 겹쳐
-        라벨 오염을 일으키므로 여기서 명확히 차단.
+    changed_span.after가 비어있지 않으면 차단
+    Information_Omission은 "순수 삭제"만 허용
+    after에 텍스트가 있다는 건 재작성(다른 표현으로 대체)이 일어났다는 겨
+    재작성은 Legal_Effect_Reversal / Entity_Substitution 영역과 겹쳐
+    라벨 오염을 일으키므로 여기서 명확히 차단
     """
     after = changed_span.get("after", "")
     if after.strip():
@@ -180,7 +157,7 @@ def _validate_information_omission(
     # before가 비어있으면 LLM이 무엇을 누락시켰는지 스스로 특정
     # 못한 것이므로 fallback 없이 즉시 차단. fallback(전체 길이 차이)은
     # "진짜 누락"과 "사소한 표현 차이"를 구분하지 못해 품질 낮은
-    # 샘플(예: change_description="누락할 중요한 내용이 없음")을 통과시킴.
+    # 샘플(예: change_description="누락할 중요한 내용이 없음") 통과
     before = changed_span.get("before", "")
     if not before.strip():
         return False, "changed_span.before가 비어있음 (누락 대상 특정 불가 — fallback 차단)"
@@ -192,9 +169,9 @@ def _validate_information_omission(
         if omitted_len < 5:
             return False, f"누락 길이가 너무 짧음 ({omitted_len}자)"
 
-    # 문장 종결 검사: 쉼표·조사 등으로 어색하게 끊기면 차단.
-    # 프롬프트에서 어미 다듬기를 요구하지만, 모델이 이를 따르지 않고
-    # 단순 truncation만 하는 경우가 있어 rule 레벨에서 추가 방어.
+    # 문장 종결 검사: 쉼표·조사 등으로 어색하게 끊기면 차단
+    # 프롬프트에서 어미 다듬기를 요구하지만 모델이 이를 따르지 않고
+    # 단순 truncation만 하는 경우가 있어 rule 레벨에서 추가 방어
     if not re.search(r"[.。!?다라]$", hallucinated.strip()):
         return False, "환각문이 문장 종결 없이 끊겨 있음 (미완성 문장, 어미 미조정 의심)"
 
@@ -206,13 +183,9 @@ def _validate_legal_effect_reversal(
 ) -> tuple[bool, str]:
     """
     원문의 법적 효과 표현(orig_phrase)이 환각문에서 역전 표현(rev_phrase)으로
-    실제로 바뀌었는지 확인.
-
-    이전 버전 문제:
-        `orig_phrase in original`만 보고 return True → 환각문이 뭐든 통과.
-    수정:
-        orig_phrase가 원문에 있고 rev_phrase가 환각문에 있어야 통과.
-        단, changed_span이 채워진 경우 해당 쌍을 우선 검증.
+    실제로 바뀌었는지 확인
+    orig_phrase가 원문에 있고 rev_phrase가 환각문에 있어야 통과
+    단, changed_span이 채워진 경우 해당 쌍을 우선 검증
     """
     before = changed_span.get("before", "")
     after  = changed_span.get("after", "")
@@ -268,8 +241,8 @@ def _validate_scope_manipulation(
 ) -> tuple[bool, str]:
     """
     Scope_Manipulation은 생성 단계에서 지정한 forced_phrase가 실제 결과에
-    반영됐는지를 우선 확인한다. forced_phrase가 없는 legacy 샘플은
-    기존 범위 키워드 휴리스틱으로 fallback한다.
+    반영됐는지를 우선 확인
+    forced_phrase가 없는 legacy 샘플은 기존 범위 키워드 휴리스틱으로 fallback
     """
     if not _texts_differ(original, hallucinated):
         return False, "원본과 환각문이 동일"
@@ -319,13 +292,12 @@ def _validate_entity_substitution(
     original: str, hallucinated: str, changed_span: dict
 ) -> tuple[bool, str]:
     """
-    변경:
-        주체 순서 치환("근로자와 사용자" → "사용자와 근로자")은
-        법적 의미 변화가 없으므로 차단 추가
-        "사용자"는 근로기준법 2조상 사업주·사업경영담당자·사업주를 위해
-        행위하는 자를 포괄하는 상위개념 ->
-        "사업주"로 치환되면 범위가 좁아지는 진짜 의미 변화
-        => {"사용자", "고용주", "사업주"} 동의어 그룹에서 분리
+    주체 순서 치환("근로자와 사용자" → "사용자와 근로자")은
+    법적 의미 변화가 없으므로 차단 추가
+    "사용자"는 근로기준법 2조상 사업주/사업경영담당자/사업주를 위해
+    행위하는 자를 포괄하는 상위개념 ->
+    "사업주"로 치환되면 범위가 좁아지는 진짜 의미 변화
+    => {"사용자", "고용주", "사업주"} 동의어 그룹에서 분리
     """
     if not _texts_differ(original, hallucinated):
         return False, "원본과 환각문이 동일"
@@ -352,7 +324,7 @@ def _validate_entity_substitution(
             return False, f"주체 순서 치환만 발생 (법적 의미 변화 없음): '{before}' → '{after}'"
 
         # 신규: 양방향 동시 맞교환 감지
-        # before가 원문에서 차지하던 위치에 after가 들어가는 동시에,
+        # before가 원문에서 차지하던 위치에 after가 들어가는 동시에
         # after가 원문에서 차지하던 위치에 before가 들어가면
         # changed_span 하나로는 설명 안 되는 이중 치환 (의미가 바뀌어도 추적 불가능한 데이터라 차단)
         core_subjects = {"근로자", "사용자", "사업주", "고용노동부장관"}
@@ -391,7 +363,7 @@ def validate(
     changed_span: dict[str, str],
 ) -> tuple[bool, str]:
     """
-    유형별 Rule 검증 진입점.
+    유형별 Rule 검증 진입점
 
     Args:
         h_type:       HallucinationType 값 문자열
